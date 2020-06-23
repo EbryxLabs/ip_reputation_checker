@@ -2,5 +2,8 @@
 	"api_keys": {
 		"virus_total": "",
 		"otx": ""
+	},
+	"file_paths": {
+		"geoip_lite_country_db": ""
 	}
 }
