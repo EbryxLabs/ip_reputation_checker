@@ -2,6 +2,7 @@ import os
 import time
 import utils
 import argparse
+import ipaddress
 import geoip2.database
 from pprint import pprint
 
@@ -13,7 +14,7 @@ args = None
 # file headers related information
 headers = {
 	'csv': {
-		'minimal': ['IP', 'Maxmind GeoLocation (Country)', 'Bad Reputed? (<Platform>)']
+		'minimal': ['IP', "Valid IP Address", "Is Public IP?", 'Maxmind GeoLocation (Country)', 'Bad Reputed? (<Platform>)']
 	}
 }
 #############
@@ -23,9 +24,11 @@ headers = {
 output_json = {
 	"ips": {
 		# ip: {
+		# 	IsValidIPAddress: "",
+		# 	IsPublicIPAddress: "",
 		# 	Country: "",
 		# 	Bad Reputed: ""
-		# }
+	# }
 	}
 }
 #############
@@ -63,10 +66,27 @@ def initialize_g_vars():
 	logger.info('Output file path + name: {}'.format(args.output_file))
 
 
+def validate_ipaddress(ip):
+	ret = True
+	try:
+		ip = ipaddress.ip_address(ip)
+		logger.info('IP {} validated successfully...'.format(ip))
+	except ValueError:
+		logger.error('IP {} could not be validated...'.format(ip))
+		ret = False
+	return ret
+
+
+def validate_public_ipaddress(ip):
+	return not ipaddress.ip_address(ip).is_private
+
+
 def get_country_info_for_input_file(path_geoip_db, path_ip_file):
 	ret = {
 		"ips": {
 			# ip: {
+			# 	IsValidIPAddress: "",
+			# 	IsPublicIPAddress: "",
 			# 	Country: "",
 			# 	Bad Reputed: ""
 			# }
@@ -78,13 +98,20 @@ def get_country_info_for_input_file(path_geoip_db, path_ip_file):
 		for ip in pif.readlines():
 			ip = ip.replace('\n', '')
 			ip = ip.replace('\r', '')
-			country = 'Unknown'
-			try: country = reader.country(ip).country.names.get('en')
-			except Exception as e: country = 'Unknown'
-			logger.info('IP: {}\tCountry: {}'.format(ip, country))
-			ret['ips'][ip] = {
-				'Country': country
-			}
+			if not ret.get('ips').get(ip):
+				ret['ips'][ip] = {}
+				# validate ip address
+				is_valid = validate_ipaddress(ip)
+				ret['ips'][ip]['IsValidIPAddress'] = is_valid
+				if is_valid:
+					is_public = validate_public_ipaddress(ip)
+					ret['ips'][ip]['IsPublicIPAddress'] = is_public
+					if is_public:
+						country = 'Unknown'
+						try: country = reader.country(ip).country.names.get('en')
+						except Exception as e: country = 'Unknown'
+						logger.info('IP: {}\tCountry: {}'.format(ip, country))
+						ret['ips'][ip]['Country'] = country
 		pprint(ret.get('ips'))
 	return ret
 
@@ -93,7 +120,7 @@ def main():
 	try:
 		initialize_g_vars()
 		if args.ip:
-			logger.info('IP worked...')
+			logger.error('Functionality not yet implemented...')
 		else: 
 			output_json = get_country_info_for_input_file(update_slashes(args.config.get('file_paths').get('geoip_lite_country_db')), args.input_file)
 	except Exception as e:
