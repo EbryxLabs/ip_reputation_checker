@@ -1,7 +1,11 @@
 import os
+import copy
+import json
 import time
 import utils
+import random
 import argparse
+import requests
 import ipaddress
 import geoip2.database
 from pprint import pprint
@@ -14,7 +18,7 @@ args = None
 # file headers related information
 headers = {
 	'csv': {
-		'minimal': ['IP', "Valid IP Address", "Is Public IP?", 'Maxmind GeoLocation (Country)', 'Bad Reputed? (<Platform>)']
+		'minimal': ['IP', "Valid IP Address", "Is Public IP?", 'Maxmind GeoLocation (Continent)', 'Maxmind GeoLocation (Country)', 'Organization', 'Bad Reputed? (<Platform>)']
 	}
 }
 #############
@@ -26,6 +30,7 @@ output_json = {
 		# ip: {
 		# 	IsValidIPAddress: "",
 		# 	IsPublicIPAddress: "",
+		# 	Continent: "",
 		# 	Country: "",
 		# 	Bad Reputed: ""
 	# }
@@ -87,6 +92,7 @@ def get_country_info_for_input_file(path_geoip_db, path_ip_file):
 			# ip: {
 			# 	IsValidIPAddress: "",
 			# 	IsPublicIPAddress: "",
+			# 	Continent: "", 
 			# 	Country: "",
 			# 	Bad Reputed: ""
 			# }
@@ -108,12 +114,68 @@ def get_country_info_for_input_file(path_geoip_db, path_ip_file):
 					ret['ips'][ip]['IsPublicIPAddress'] = is_public
 					if is_public:
 						country = 'Unknown'
-						try: country = reader.country(ip).country.names.get('en')
+						continent = 'Unknown'
+						# organization = 'Unknown'
+						# try: organization = reader.isp(ip).autonomous_system_organization
+						# try: 
+						# 	organization = reader.isp(ip)
+						# 	pprint(organization)
+						# except Exception as e: 
+						# 	logger.error('Error {} occurred'.format(e))
+						# 	organization = 'Unknown'
+						try: dict_response = reader.country(ip)
+						except Exception as e: 
+							country = 'Unknown'
+							continent = 'Unknown'
+						try: country = dict_response.country.names.get('en')
 						except Exception as e: country = 'Unknown'
-						logger.info('IP: {}\tCountry: {}'.format(ip, country))
+						try: continent = dict_response.continent.names.get('en')
+						except Exception as e: 
+							continent = 'Unknown'
+						# logger.info('IP: {}\tCountry: {}\tContinent: {}\tOrganization: {}'.format(ip, country, continent, organization))
+						logger.info('IP: {}\tCountry: {}\tContinent: {}'.format(ip, country, continent))
 						ret['ips'][ip]['Country'] = country
+						ret['ips'][ip]['Continent'] = continent
+						# ret['ips'][ip]['Organization'] = organization
 		pprint(ret.get('ips'))
 	return ret
+
+
+def get_virus_total_results(api_key, output_json):
+	c_output_json = copy.deepcopy(output_json)
+	for ip, values in c_output_json.get('ips').items():
+		url = 'https://www.virustotal.com/vtapi/v2/ip-address/report?apikey=<apikey>&ip=<ip>'.replace('<apikey>', api_key)
+		if values.get('IsValidIPAddress') and values.get('IsPublicIPAddress') and (not (('organization' in output_json['ips'][ip]) or 'IsBadReputedOnVirusTotal' in output_json['ips'][ip])):
+			url = url.replace('<ip>', ip)
+			response = requests.get(url=url)
+			# print(type(response.status_code))
+			# print(response.status_code)
+			organization = 'Unknown'
+			is_bad_reputed = False
+			if response.status_code == 200:
+				response = response.json()
+				logger.debug('Response converted to JSON...')
+				pprint(response)
+				if response.get('response_code') == 1 and 'IP address in dataset' in response.get('verbose_msg'):
+					logger.debug('Org and Reputation check will be done...')
+					if 'whois' in response and 'Organization' in response.get('whois'): 
+						logger.debug('Org check will be done...')
+						for item in response.get('whois').split('\n'):
+							if 'Organization: ' in item: 
+								organization = item.split('Organization: ')[1]
+						logger.debug('Org check done...')
+					# logic to mark as bad reputed
+					if ('detected_urls' in response and len(response.get('detected_urls')) > 0) or ('detected_downloaded_samples' in response and len(response.get('detected_downloaded_samples')) > 0):
+						logger.debug('Reputation check will be done...')
+						is_bad_reputed = True
+						logger.debug('Reputation check done...')
+			output_json['ips'][ip]['Organization'] = organization
+			output_json['ips'][ip]['IsBadReputedOnVirusTotal'] = is_bad_reputed
+			logger.info('IP: {}\tOrganization: {}'.format(ip, organization))
+			logger.info('IP: {}\tIs Bad Reputed: {}'.format(ip, is_bad_reputed))
+			# sleep 15+ seconds to avoid ratelimiting
+			time.sleep(random.randint(16, 20))
+	return output_json
 
 
 def main():
@@ -123,6 +185,11 @@ def main():
 			logger.error('Functionality not yet implemented...')
 		else: 
 			output_json = get_country_info_for_input_file(update_slashes(args.config.get('file_paths').get('geoip_lite_country_db')), args.input_file)
+			if args.config.get('api_keys') and args.config.get('api_keys').get('virus_total'):
+				output_json = get_virus_total_results(args.config.get('api_keys').get('virus_total'), output_json)
+			pprint(output_json)
+			if args.output_format == 'csv':
+				dict_to_csv(args.output_file, output_json)
 	except Exception as e:
 		logger.error('Exception {} occurred in main of file {}...'.format(e, os.path.basename(__file__)))
 
