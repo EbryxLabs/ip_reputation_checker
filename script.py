@@ -55,7 +55,7 @@ def setup_args():
 	parser.add_argument('-c', '--config', metavar='<config file>', type=str, help='Path to config file containing API keys. Eg: /path/to/config.json', default='config/.prod_config.json')
 	parser.add_argument('-if', '--input_file', metavar='<input file>', type=str, help='Input file containing list of IPs. Eg: /path/to/ips.txt')
 	parser.add_argument('-fmt', '--output_format', metavar='<output format>', type=str, default='csv', help='Output format of the data. Eg: csv')
-	parser.add_argument('-of', '--output_file', metavar='<output file>', type=str, help='Output file name. Eg: /path/to/out-<epoch_time>', default='output/out-{}'.format(time.time()))
+	parser.add_argument('-of', '--output_file', metavar='<output file>', type=str, help='Output file name. Eg: /path/to/out-<epoch_time>', default='.output/out-{}'.format(time.time()))
 	logger.info('Arguments parsed successfully...')
 	return parser.parse_args()
 
@@ -174,8 +174,24 @@ def get_virus_total_results(api_key, output_json):
 			logger.info('IP: {}\tOrganization: {}'.format(ip, organization))
 			logger.info('IP: {}\tIs Bad Reputed: {}'.format(ip, is_bad_reputed))
 			# sleep 15+ seconds to avoid ratelimiting
-			time.sleep(random.randint(16, 20))
+			sleep_time = random.randint(16, 20)
+			logger.info('Sleeping for {} seconds to avoid ratelimiting...'.format(sleep_time))
+			time.sleep(sleep_time)
 	return output_json
+
+
+def dict_to_csv(output_file, output_json):
+	with open(output_file, 'w') as of:
+		# insert header
+		logger.info('Inserting header...')
+		of.write('IP,IsValidIPAddress,IsPublicIPAddress,Continent,Country,Organization,IsBadReputedOnVirusTotal\n')
+		# insert results into file
+		logger.info('Writing IP results into file...')
+		for ip, values in output_json.get('ips').items():
+			mstr = '{},{},{},{},{},{},{}'.format(ip, values.get('IsValidIPAddress'), values.get('IsPublicIPAddress'), values.get('Continent'), values.get('Country'), values.get('Organization'), values.get('IsBadReputedOnVirusTotal'))
+			of.write(mstr + '\n')
+			logger.info(mstr)
+	logger.info('Output can be found in file {}...'.format(output_file))
 
 
 def main():
