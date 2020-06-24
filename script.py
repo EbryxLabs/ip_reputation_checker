@@ -56,6 +56,7 @@ def setup_args():
 	parser.add_argument('-if', '--input_file', metavar='<input file>', type=str, help='Input file containing list of IPs. Eg: /path/to/ips.txt')
 	parser.add_argument('-fmt', '--output_format', metavar='<output format>', type=str, default='csv', help='Output format of the data. Eg: csv')
 	parser.add_argument('-of', '--output_file', metavar='<output file>', type=str, help='Output file name. Eg: /path/to/out-<epoch_time>', default='.output/out-{}'.format(time.time()))
+	parser.add_argument('-cd', '--csv_delimiter', metavar='<CSV Delimiter>', type=str, default=';', help='CSV delimiter. Eg: space, comma, tab, semi colon etc.')
 	logger.info('Arguments parsed successfully...')
 	return parser.parse_args()
 
@@ -180,15 +181,15 @@ def get_virus_total_results(api_key, output_json):
 	return output_json
 
 
-def dict_to_csv(output_file, output_json):
+def dict_to_csv(output_file, output_json, csv_delimiter):
 	with open(output_file, 'w') as of:
 		# insert header
 		logger.info('Inserting header...')
-		of.write('IP,IsValidIPAddress,IsPublicIPAddress,Continent,Country,Organization,IsBadReputedOnVirusTotal\n')
+		of.write('{}\n'.format(csv_delimiter.join(['IP','IsValidIPAddress','IsPublicIPAddress','Continent','Country','Organization','IsBadReputedOnVirusTotal'])))
 		# insert results into file
 		logger.info('Writing IP results into file...')
 		for ip, values in output_json.get('ips').items():
-			mstr = '{},{},{},{},{},{},{}'.format(ip, values.get('IsValidIPAddress'), values.get('IsPublicIPAddress'), values.get('Continent'), values.get('Country'), values.get('Organization'), values.get('IsBadReputedOnVirusTotal'))
+			mstr = csv_delimiter.join([ip, '{}'.format(values.get('IsValidIPAddress')), '{}'.format(values.get('IsPublicIPAddress')), values.get('Continent'), values.get('Country'), values.get('Organization'), '{}'.format(values.get('IsBadReputedOnVirusTotal'))])
 			of.write(mstr + '\n')
 			logger.info(mstr)
 	logger.info('Output can be found in file {}...'.format(output_file))
@@ -205,7 +206,7 @@ def main():
 				output_json = get_virus_total_results(args.config.get('api_keys').get('virus_total'), output_json)
 			pprint(output_json)
 			if args.output_format == 'csv':
-				dict_to_csv(args.output_file, output_json)
+				dict_to_csv(args.output_file, output_json, args.csv_delimiter)
 	except Exception as e:
 		logger.error('Exception {} occurred in main of file {}...'.format(e, os.path.basename(__file__)))
 
