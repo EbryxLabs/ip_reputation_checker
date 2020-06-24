@@ -1,4 +1,4 @@
-# IP Reputaation Checker Tool
+# IP Reputation Checker Tool
 
 
 ### Description:
